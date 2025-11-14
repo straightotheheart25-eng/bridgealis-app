@@ -1,19 +1,50 @@
-# Bridgealis App — Starter scaffold
+# Updated README File
 
-This branch contains a starter Next.js + TypeScript scaffold for the Bridgealis job marketplace.
+This is the expanded instructions for the bridgealis-app.
 
-Included features in this scaffold:
-- Prisma schema with core models (User, Profile, Company, Job, Application, Resume)
-- API endpoints for resume availability and generation (server-side PDF using pdf-lib)
-- Client component to trigger resume generation (gated after 2 applications)
-- Pricing page that computes 10% below a configurable baseline price
+## Getting Started
 
-How to run locally:
-1. cp .env.example .env.local and fill values (DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL, NEXT_PUBLIC_BASELINE_POST_PRICE)
-2. pnpm install or npm install
-3. npx prisma migrate dev --name init
-4. npm run dev
+To get a copy of the project up and running on your local machine for development and testing purposes, follow these steps:
 
-Notes:
-- This scaffold uses pdf-lib (server-side) for PDF generation to keep runtime serverless-friendly. For higher-fidelity HTML->PDF, consider a worker using Puppeteer.
-- Auth wiring (NextAuth providers) is scaffolded minimally; configure providers as needed.
+### Prerequisites
+
+* Node.js
+* npm or yarn
+
+### Installation
+
+1. Clone the repo
+   ```sh
+   git clone https://github.com/your_username/bridgealis-app.git
+   ```
+2. Install NPM packages
+   ```sh
+   npm install
+   ```
+
+### Usage
+
+* To start the development server:
+   ```sh
+   npm run dev
+   ```
+* To build the application:
+   ```sh
+   npm run build
+   ```
+* To run the application:
+   ```sh
+   npm start
+   ```
+
+### Running Tests
+
+Explain how to run the automated tests for this system.
+
+### Contributing
+
+Please read [CONTRIBUTING.md](https://example.com) for details on our code of conduct, and the process for submitting pull requests to us.
+
+### License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
