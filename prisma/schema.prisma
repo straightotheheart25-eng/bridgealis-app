@@ -8,16 +8,19 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  name      String?
-  role      Role      @default(CANDIDATE)
-  profile   Profile?
-  company   Company?  @relation(fields: [companyId], references: [id])
-  companyId String?
-  createdAt DateTime  @default(now())
-  applications Application[]
-  resumes   Resume[]
+  id            String        @id @default(cuid())
+  email         String?       @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          Role          @default(CANDIDATE)
+  profile       Profile?
+  ownedCompany  Company?      @relation("CompanyOwner")
+  createdAt     DateTime      @default(now())
+  applications  Application[]
+  resumes       Resume[]
+  accounts      Account[]
+  sessions      Session[]
 }
 
 enum Role {
@@ -27,11 +30,11 @@ enum Role {
 }
 
 model Profile {
-  id         String  @id @default(cuid())
-  user       User    @relation(fields: [userId], references: [id])
-  userId     String  @unique
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String   @unique
   headline   String?
-  cohortType Cohort? 
+  cohortType Cohort?
   skills     String[] @default([])
   experience Json?
 }
@@ -44,42 +47,42 @@ enum Cohort {
 }
 
 model Company {
-  id          String   @id @default(cuid())
-  owner       User     @relation(fields: [ownerId], references: [id])
-  ownerId     String
-  name        String
-  website     String?
-  verified    Boolean  @default(false)
-  jobs        Job[]
+  id       String  @id @default(cuid())
+  owner    User    @relation("CompanyOwner", fields: [ownerId], references: [id])
+  ownerId  String  @unique
+  name     String
+  website  String?
+  verified Boolean @default(false)
+  jobs     Job[]
 }
 
 model Job {
-  id                   String   @id @default(cuid())
-  company              Company  @relation(fields: [companyId], references: [id])
+  id                   String        @id @default(cuid())
+  company              Company       @relation(fields: [companyId], references: [id])
   companyId            String
   title                String
   description          String
-  tags                 String[] @default([])
-  secondChanceFriendly Boolean  @default(false)
-  entryLevel           Boolean  @default(false)
-  remote               Boolean  @default(false)
+  tags                 String[]      @default([])
+  secondChanceFriendly Boolean       @default(false)
+  entryLevel           Boolean       @default(false)
+  remote               Boolean       @default(false)
   salaryMin            Int?
   salaryMax            Int?
-  featured             Boolean  @default(false)
-  createdAt            DateTime @default(now())
+  featured             Boolean       @default(false)
+  createdAt            DateTime      @default(now())
   applications         Application[]
 }
 
 model Application {
-  id          String   @id @default(cuid())
-  job         Job      @relation(fields: [jobId], references: [id])
+  id          String            @id @default(cuid())
+  job         Job               @relation(fields: [jobId], references: [id])
   jobId       String
-  candidate   User     @relation(fields: [candidateId], references: [id])
+  candidate   User              @relation(fields: [candidateId], references: [id])
   candidateId String
   coverLetter String?
   resumeUrl   String?
   status      ApplicationStatus @default(APPLIED)
-  createdAt   DateTime @default(now())
+  createdAt   DateTime          @default(now())
 }
 
 enum ApplicationStatus {
@@ -91,14 +94,14 @@ enum ApplicationStatus {
 }
 
 model Resume {
-  id          String   @id @default(cuid())
-  user        User     @relation(fields: [userId], references: [id])
+  id          String       @id @default(cuid())
+  user        User         @relation(fields: [userId], references: [id])
   userId      String
   url         String
   template    String
-  generatedAt DateTime @default(now())
+  generatedAt DateTime     @default(now())
   expiresAt   DateTime?
-  downloads   Int      @default(0)
+  downloads   Int          @default(0)
   status      ResumeStatus @default(PENDING)
 }
 
@@ -110,12 +113,12 @@ enum ResumeStatus {
 }
 
 model ResumeJob {
-  id          String   @id @default(cuid())
+  id          String          @id @default(cuid())
   userId      String
   template    String
   status      ResumeJobStatus @default(QUEUED)
   resumeId    String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime        @default(now())
   processedAt DateTime?
 }
 
@@ -124,4 +127,39 @@ enum ResumeJobStatus {
   PROCESSING
   DONE
   FAILED
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
