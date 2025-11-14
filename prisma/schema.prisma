@@ -99,4 +99,29 @@ model Resume {
   generatedAt DateTime @default(now())
   expiresAt   DateTime?
   downloads   Int      @default(0)
+  status      ResumeStatus @default(PENDING)
+}
+
+enum ResumeStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model ResumeJob {
+  id          String   @id @default(cuid())
+  userId      String
+  template    String
+  status      ResumeJobStatus @default(QUEUED)
+  resumeId    String?
+  createdAt   DateTime @default(now())
+  processedAt DateTime?
+}
+
+enum ResumeJobStatus {
+  QUEUED
+  PROCESSING
+  DONE
+  FAILED
 }
