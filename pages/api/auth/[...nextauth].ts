@@ -1,1 +1,29 @@
-import NextAuth from 'next-auth';\nimport GoogleProvider from 'next-auth/providers/google';\n\nexport default NextAuth({\n  providers: [\n    GoogleProvider({\n      clientId: process.env.GOOGLE_CLIENT_ID!,\n      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,\n    }),\n  ],\n  secret: process.env.NEXTAUTH_SECRET,\n  callbacks: {\n    async session({ session, token, user }) {\n      // attach user email to session if needed\n      return session;\n    }\n  }\n});
+import NextAuth from 'next-auth';
+import GoogleProvider from 'next-auth/providers/google';
+import { PrismaAdapter } from '@next-auth/prisma-adapter';
+import prisma from '../../../lib/prisma';
+
+export default NextAuth({
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+  ],
+  secret: process.env.NEXTAUTH_SECRET,
+  session: {
+    strategy: 'jwt',
+  },
+  callbacks: {
+    async session({ session, user, token }) {
+      if (session?.user) {
+        (session.user as any).id = (user as any)?.id || (token as any)?.sub;
+      }
+      return session;
+    },
+    async signIn({ user, account, profile, email, credentials }) {
+      return true;
+    },
+  },
+});
