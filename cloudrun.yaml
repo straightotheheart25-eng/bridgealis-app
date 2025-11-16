@@ -1,0 +1,41 @@
+# Cloud Run Service Configuration
+# This file can be used for simplified Cloud Run deployment
+# Replace the placeholders with your actual values
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: bridgealis-app
+  labels:
+    cloud.googleapis.com/location: us-central1
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cloudsql-instances: 'YOUR_PROJECT_ID:us-central1:bridgealis-db'
+        autoscaling.knative.dev/maxScale: '10'
+        autoscaling.knative.dev/minScale: '0'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: gcr.io/YOUR_PROJECT_ID/bridgealis-app
+        resources:
+          limits:
+            memory: 1Gi
+            cpu: '1'
+        env:
+        - name: NEXTAUTH_URL
+          value: 'https://bridgealis-app-XXXXX.run.app'  # Update after first deployment
+        - name: NEXTAUTH_SECRET
+          value: 'GENERATED_SECRET_HERE'  # Generate with: openssl rand -base64 32
+        - name: DATABASE_URL
+          value: 'postgresql://postgres:PASSWORD@localhost/bridgealis?host=/cloudsql/PROJECT_ID:us-central1:bridgealis-db'
+        - name: GOOGLE_CLIENT_ID
+          value: 'YOUR_CLIENT_ID.apps.googleusercontent.com'
+        - name: GOOGLE_CLIENT_SECRET
+          value: 'YOUR_CLIENT_SECRET'
+        - name: GCP_PROJECT_ID
+          value: 'YOUR_PROJECT_ID'
+        - name: GCS_BUCKET_NAME
+          value: 'bridgealis-resumes-YOUR_PROJECT_ID'
