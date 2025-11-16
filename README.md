@@ -152,6 +152,208 @@ The resume generation system uses a queue-based architecture:
 6. Once complete, the resume download link will be available
 7. Click download to get a signed URL to the generated PDF
 
+## Deploying to Google Cloud Platform
+
+This guide walks you through deploying the Bridgealis app to Google Cloud Platform (GCP) as simply as possible.
+
+### Prerequisites
+
+- Google Cloud account with billing enabled
+- [Google Cloud SDK (gcloud CLI)](https://cloud.google.com/sdk/docs/install) installed
+- A GCP project created
+
+### Step 1: Set Up Google Cloud Services
+
+```sh
+# Login to Google Cloud
+gcloud auth login
+
+# Set your project ID
+export PROJECT_ID="your-project-id"
+gcloud config set project $PROJECT_ID
+
+# Enable required APIs
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com
+gcloud services enable sqladmin.googleapis.com
+gcloud services enable storage.googleapis.com
+```
+
+### Step 2: Create PostgreSQL Database
+
+```sh
+# Create Cloud SQL PostgreSQL instance
+gcloud sql instances create bridgealis-db \
+  --database-version=POSTGRES_14 \
+  --tier=db-f1-micro \
+  --region=us-central1
+
+# Set a password for the postgres user
+gcloud sql users set-password postgres \
+  --instance=bridgealis-db \
+  --password=YOUR_SECURE_PASSWORD
+
+# Create the database
+gcloud sql databases create bridgealis --instance=bridgealis-db
+```
+
+### Step 3: Create Google Cloud Storage Bucket
+
+```sh
+# Create a bucket for resume PDFs
+gsutil mb -l us-central1 gs://bridgealis-resumes-$PROJECT_ID
+
+# Make bucket private (files accessed via signed URLs)
+gsutil iam ch allUsers:objectViewer gs://bridgealis-resumes-$PROJECT_ID
+```
+
+### Step 4: Set Up Google OAuth Credentials
+
+1. Go to [Google Cloud Console > APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials)
+2. Click **Create Credentials** > **OAuth 2.0 Client ID**
+3. Select **Web application**
+4. Add authorized redirect URI: `https://YOUR_APP_URL/api/auth/callback/google`
+5. Save the **Client ID** and **Client Secret**
+
+### Step 5: Deploy the Web App to Cloud Run
+
+```sh
+# Build and deploy the Next.js app
+gcloud run deploy bridgealis-app \
+  --source . \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars "NEXTAUTH_URL=https://bridgealis-app-XXXXX.run.app" \
+  --set-env-vars "NEXTAUTH_SECRET=$(openssl rand -base64 32)" \
+  --set-env-vars "DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@/bridgealis?host=/cloudsql/$PROJECT_ID:us-central1:bridgealis-db" \
+  --set-env-vars "GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID" \
+  --set-env-vars "GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET" \
+  --set-env-vars "GCP_PROJECT_ID=$PROJECT_ID" \
+  --set-env-vars "GCS_BUCKET_NAME=bridgealis-resumes-$PROJECT_ID" \
+  --add-cloudsql-instances $PROJECT_ID:us-central1:bridgealis-db
+```
+
+**Note**: After deployment, update the OAuth redirect URI with the actual Cloud Run URL.
+
+### Step 6: Run Database Migrations
+
+```sh
+# Connect to Cloud SQL and run migrations
+gcloud sql connect bridgealis-db --user=postgres
+
+# In another terminal, use Cloud SQL Proxy
+cloud_sql_proxy -instances=$PROJECT_ID:us-central1:bridgealis-db=tcp:5432
+
+# Set DATABASE_URL and run migrations
+export DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/bridgealis"
+npx prisma migrate deploy
+
+# Optional: Seed the database
+npm run seed
+```
+
+### Step 7: Deploy the Worker to Cloud Run Jobs
+
+Create a `worker.Dockerfile`:
+
+```dockerfile
+FROM node:18-slim
+
+# Install Puppeteer dependencies
+RUN apt-get update && apt-get install -y \
+    wget gnupg ca-certificates \
+    fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 \
+    libatspi2.0-0 libcups2 libdbus-1-3 libdrm2 libgbm1 libgtk-3-0 \
+    libnspr4 libnss3 libwayland-client0 libxcomposite1 libxdamage1 \
+    libxfixes3 libxkbcommon0 libxrandr2 xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY worker/package*.json ./
+RUN npm ci --only=production
+COPY worker/ ./
+COPY lib/ ../lib/
+COPY prisma/ ../prisma/
+
+CMD ["node", "index.js"]
+```
+
+Deploy the worker:
+
+```sh
+# Build and push Docker image
+gcloud builds submit --tag gcr.io/$PROJECT_ID/bridgealis-worker ./worker
+
+# Create and run the worker job
+gcloud run jobs create bridgealis-worker \
+  --image gcr.io/$PROJECT_ID/bridgealis-worker \
+  --region us-central1 \
+  --set-env-vars "DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@/bridgealis?host=/cloudsql/$PROJECT_ID:us-central1:bridgealis-db" \
+  --set-env-vars "GCP_PROJECT_ID=$PROJECT_ID" \
+  --set-env-vars "GCS_BUCKET_NAME=bridgealis-resumes-$PROJECT_ID" \
+  --add-cloudsql-instances $PROJECT_ID:us-central1:bridgealis-db \
+  --task-timeout 3600 \
+  --max-retries 3
+
+# Execute the job (for continuous running, use Cloud Scheduler)
+gcloud run jobs execute bridgealis-worker --region us-central1
+```
+
+### Step 8: Set Up Cloud Scheduler (Optional - for continuous worker)
+
+```sh
+# Create a Cloud Scheduler job to run the worker every 5 minutes
+gcloud scheduler jobs create http bridgealis-worker-trigger \
+  --location us-central1 \
+  --schedule "*/5 * * * *" \
+  --uri "https://YOUR_CLOUD_RUN_JOB_URL" \
+  --http-method POST
+```
+
+### Simplified Alternative: Use App Engine
+
+For an even simpler deployment without Docker:
+
+```sh
+# Create app.yaml
+cat > app.yaml << EOF
+runtime: nodejs18
+env: standard
+instance_class: F2
+
+env_variables:
+  NEXTAUTH_URL: "https://$PROJECT_ID.appspot.com"
+  NEXTAUTH_SECRET: "$(openssl rand -base64 32)"
+  DATABASE_URL: "postgresql://postgres:YOUR_PASSWORD@/bridgealis?host=/cloudsql/$PROJECT_ID:us-central1:bridgealis-db"
+  GOOGLE_CLIENT_ID: "YOUR_GOOGLE_CLIENT_ID"
+  GOOGLE_CLIENT_SECRET: "YOUR_GOOGLE_CLIENT_SECRET"
+  GCP_PROJECT_ID: "$PROJECT_ID"
+  GCS_BUCKET_NAME: "bridgealis-resumes-$PROJECT_ID"
+
+beta_settings:
+  cloud_sql_instances: "$PROJECT_ID:us-central1:bridgealis-db"
+EOF
+
+# Deploy to App Engine
+gcloud app deploy
+```
+
+### Post-Deployment Steps
+
+1. **Update OAuth redirect URIs** in Google Cloud Console with your actual deployment URL
+2. **Run database migrations** using Cloud SQL Proxy
+3. **Test the application** by visiting your Cloud Run or App Engine URL
+4. **Monitor logs**: `gcloud run logs read --service bridgealis-app`
+5. **Set up monitoring** in Google Cloud Console for performance tracking
+
+### Cost Optimization Tips
+
+- Use Cloud SQL `db-f1-micro` or `db-g1-small` for development
+- Enable Cloud Run autoscaling (min instances = 0)
+- Set Cloud Storage lifecycle policies to delete old resumes
+- Use Cloud Scheduler to run worker only during business hours
+
 ## Architecture
 
 - **Frontend**: Next.js with React
